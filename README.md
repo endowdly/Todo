@@ -38,7 +38,7 @@ I have a Windows box at work and a Mac at home. Using Todo.sh is a pleasure, and
 Completely welcome. As this project stands, it does what _I_ need it to do. But, I understand if it's to be used for the larger public, it'll need to be improved. If you like todo.sh and would like to use it with posh, feel free to improve what I've done and send pull requests! 
 
 ### Issues
-That said, if enough people use this, I'm sure issues will be discover. Please report them to me! I will look into them and try to fix them as fast as possible. When reporting, please describe what system and version of PowerShell you are using at the minimum. 
+That said, if enough people use this, I'm sure issues will be discovered. Please report them to me! I will look into them and try to fix them as fast as possible. When reporting, please describe what system and version of PowerShell you are using at the minimum. 
 
 ## Disclaimer and License
 MIT License
