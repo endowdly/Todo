@@ -20,6 +20,12 @@ In this port, using PowerShell, you would do the same thing by
 item1, item2, item3 | todo [command]
 ```
 
+An example would be
+```sh
+3, 5, 6 | todo -Delete
+```
+Which would delete those items in todo.txt (by default, though you can change that with `-Path`). 
+
 I could have emulated the bash behavior perfectly, but I wanted to leverage the power of Cmdlet parameters. 
 
 ## Cross Compatibility
