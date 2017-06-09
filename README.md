@@ -1,5 +1,8 @@
 # TODO.txt -- A PowerShell Port
 
+## Original
+Please see Gina's excellent original on Github [here](https://github.com/ginatrapani/todo.txt-cli).
+
 ## Release State
 This has been a lot of cobbling. I haven't really decided how to approach this port in a coherent manner nor have I had a lot of time to devote to refactoring the original shell script to posh. 
 
