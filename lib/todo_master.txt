@@ -1,0 +1,908 @@
+#! /usr/bin/env PowerShell
+
+# NOTE: Todo.ps1 requires the .todo/config configuration file to run.
+#  Place the .todo/config file in your home directory or use the -d option for
+#  a custom location
+
+# === ! IMPORTANT ! ===========================================================
+# 
+# Redirect Operators in PowerShell are syntax sugar -- they call Out-File and 
+#  Out-File -Append
+#
+# Out-File default encodes files to UTF16-LE -- this is not very portable
+#
+# Set-Content and Add-Content both default to ASCII, which is highly portable
+#  They also allow you to specifiy the output encoding
+#
+# And so, while readablility favors the use of redirects, for file write and 
+#  append ops, use Set- and Add-Content instead of '>' and '>>'
+# 
+# === ! IMPORTANT ! ===========================================================
+
+# === ^ EXCEPTION ^ ===========================================================
+# 
+# Redirects to null are favored over pipes to Out-Null
+#
+# They essentially complete the same task (supression of output), but Out-Null
+#  defaults to a streamed loop of null calls
+# 
+# Casting .NET operations to [Void] and redirecting completed operations to 
+#  null are prefered -- assigning operations to null is also a method
+#
+# === ^ EXCEPTION ^ ===========================================================
+
+# === NOTE ====================================================================
+# 
+# Gina favors short-circuiting a lot -- I turn a lot of those sc's into if-else
+#  statements for readability
+#
+# Some sc are retained -- to supress output of sc in PowerShell, you have to 
+#  redirect output to a variable or null
+# 
+# === NOTE ====================================================================
+
+# Set script name and full path early.
+# $TODO_SH = $(basename "$0")
+$TODO_SH = $MyInvocation.ScriptName.BaseName
+# $TODO_FULL_SH = "$0"
+$TODO_FULL_SH = $MyInvocation.ScriptName
+export TODO_SH TODO_FULL_SH   # <-
+
+function Invoke-Todo {
+    <#
+    .Notes
+      TODO.TXT Command Line Interface. Call -Version for current Version.
+
+      First release: 5/11/2006
+      First release: 5/11/2006
+      Original conception by: Gina Trapani (http://ginatrapani.org)
+      PowerShell port by: endowdly
+
+    .Link
+      http://github.com/ginatrapani/todo.txt-cli/network
+      http://www.gnu.org/copyleft/gpl.html
+      http://todotxt.com
+      http://github.com/ginatrapani/todo.txt-cli/tree/master
+    #>
+
+    [CmdletBinding(DefaultParameterSetName='List')]
+    [OutputType([String])]
+
+    param (
+    
+        # --- Actions First ---        
+        [Parameter(ParameterSetName='Add')]
+        [Switch] $Add,
+        
+        [Parameter(ParameterSetName='AddTo')]
+        [Switch] $AddTo,
+        
+        [Parameter(ParameterSetName='Append')]
+        [Switch] $Append,
+        
+        [Parameter()]
+        [Switch] $Archive,
+        
+        [Parameter()]
+        [Alias('Deduplicate')]
+        [Switch] $RemoveDuplicates,
+        
+        [Parameter(ParameterSetName='Remove')]
+        [Alias('del', 'rm')]
+        [Switch] $Remove,
+        
+        [Parameter(ParameterSetName='RemovePriority')]
+        [Alias('depri','dp')]
+        [Switch] $RemovePriority,
+        
+        [Parameter(ParameterSetName='Do')]
+        [Switch] $Do,
+        
+#       [Parameter()]
+#       [Switch] $Help,
+        ## Use help Invoke-Todo
+
+        [Parameter(ParameterSetName='List')]
+        [Alias('ls')]
+        [Switch] $List,
+        
+        [Parameter(ParameterSetName='ListAll')]
+        [Alias('lsa')]
+        [Switch] $ListAll,
+        
+        [Parameter()]
+        [Switch] $ListAllAddOns,
+        
+        [Parameter(ParameterSetName='ListContext')]
+        [Alias('lsc')]
+        [Switch] $ListContext,
+        
+        [Parameter(ParameterSetName='ListFile')]
+        [Alias('lf')]
+        [Switch] $ListFile,
+        
+        [Parameter(ParameterSetName='ListPriority')]
+        [Alias('lsp')]
+        [Switch] $ListPriority,
+        
+        [Parameter(ParameterSetName='ListProject')]
+        [Alias('lsprj')]
+        [Switch] $ListProject,
+        
+        [Parameter(ParameterSetName='Move')]
+        [Alias('mv')]
+        [Switch] $Move,
+        
+        [Parameter(ParameterSetName='Prepend')]
+        [Switch] $Prepend,
+        
+        [Parameter(ParameterSetName='Priority')]
+        [Switch] $Priority,
+        
+        [Parameter(ParameterSetName='Replace')]
+        [Switch] $Replace,
+        
+        [Parameter()]
+        [Switch] $Report,
+        
+#       [Parameter()]
+#       [Switch] $ShortHelp,
+        # -> Invoke-Todo -?
+        
+        # --- Action Arguments ---
+        [Parameter(ParameterSetName='Add',
+                   Position=0, 
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromPipeline=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter text to add')]
+        [Parameter(ParameterSetName='AddTo',
+                   Position=1,
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromPipeline=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter text to add to destination')]
+        [Parameter(ParameterSetName='Append',
+                   Position=1,
+                   ValueFromPipelineByPropertyName=$True,
+                   Mandatory=$True,
+                   HelpMessage='Text to append to the end of task')]
+        [Parameter(ParameterSetName='Prepend',
+                   Mandatory=$True,
+                   Position=1,
+                   ValueFromPipelineByPropertyName=$True,
+                   HelpMessage='Text to add to the beginning of task')]
+        [Parameter(ParameterSetName='Replace',
+                   Mandatory=$True,
+                   Position=1,
+                   ValueFromPipelineByPropertyName=$True,
+                   HelpMessage='Text to replace text at item')]
+        [String] $Text,
+
+        [Parameter(Position=2,
+                   ValueFromPipelineByPropertyName=$True,
+                   ParameterSetName='Add')]
+        [Parameter(Position=3,
+                   ValueFromPipelineByPropertyName=$True,
+                   ParameterSetname='AddTo')]
+        [String] $Project,
+
+        [Parameter(Postion=3,
+                   ValueFromPipelineByPropertyName=$True,
+                   ParameterSetName='Add')]
+        [Parameter(Position=4,
+                   ValueFromPipelineByPropertyName=$True,
+                   ParameterSetname='AddTo')]
+        [String] $Context,
+
+        [Parameter()]
+        [ValidateScript({ Test-Path $_ -PathType Leaf})]
+        [Alias('src','Source')]
+        [String] $Path=$env:todo_file,
+
+        [Parameter(ParameterSetName='Append',
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter item number to add text to')]
+        [Parameter(ParameterSetName='Remove',
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromPipeline=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter an item to delete')]
+        [Parameter(ParameterSetName='RemovePriority',
+                   Mandatory=$True,
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromPipeline=$True,
+                   ValueFromRemainingArguments=$True,
+                   HelpMessage='Enter item or item array to remove priority')]
+        [Parameter(ParameterSetName='Do',
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromPipeline=$True,
+                   ValueFromRemainingArguments=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter tasks to complete')]
+        [Parameter(ParameterSetName='Move',
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromPipeline=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter line to move to destination')]
+        [Parameter(ParameterSetName='Prepend',
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True,
+                   Position=0,
+                   Mandatory=$True,
+                   HelpMessage='Item to add text to')]
+        [Parameter(ParameterSetName='Priority',
+                   Mandatory=$True,
+                   Position=0,
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True,
+                   HelpMessage='Add Priority to task on line item')]
+         [Parameter(ParameterSetName='Replace',
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True,
+                   Position=0,
+                   Mandatory=$True,
+                   HelpMessage='Item to replace')]
+        [Int] $Item,
+
+        [Parameter(ParameterSetName='Priority',
+                   Mandatory=$True,
+                   Position=1,
+                   ValueFromPipelineByPropertyName=$True,
+                   HelpMessage='Priority must be a letter from A-Z')]
+        [Parameter(ParameterSetName='ListPriority',
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromRemainingArguments=$True,
+                   HelpMessage='Priority must be a letter from A-Z')]
+        [ValidatePattern('[a-zA-Z]')]
+        [Char] $Priority,
+
+        [Parameter(ParameterSetName='Remove',
+                   Postion=1,
+                   ValueFromPipeline=$False,
+                   ValueFromPipelineByPropertyName=$True)]
+        [Parameter(ParameterSetName='List',
+                   Position=0,
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True)]
+        [Parameter(ParameterSetName='ListAll',
+                   Position=0,
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True)]
+        [Parameter(ParameterSetName='ListContext',
+                   Position=0,
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True)]
+        [Parameter(ParameterSetName='ListFile',
+                   Position=1,
+                   ValueFromPipeline=$True,
+                   ValueFromPipelineByPropertyName=$True)]
+        [Parameter(ParameterSetName='ListPriority',
+                   ValueFromPipelineByPropertyName=$True,
+                   Position=1)]
+        [Parameter(ParameterSetName='ListProject',
+                   ValueFromPipelineByPropertyName=$True,
+                   ValueFromPipeline=$True,
+                   Position=0)]
+        [String] $Term,
+        
+        [Parameter(ParameterSetName='AddTo',
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter a destination file')]
+        [Parameter(ParameterSetName='Move',
+                   Position=1,
+                   ValueFromPipelineByPropertyName=$True,
+                   Mandatory=$True,
+                   HelpMessage='Enter a destination file')]
+        [ValidateScript({ Test-Path $_ -PathType Leaf})]
+        [Alias('Dest')]
+        [String] $Destination,
+        
+        # --- Options ---
+        [Alias('@')]
+        [Switch] $HideContextNames,
+
+        [Alias('+')]
+        [Switch] $HideProjectNames,
+
+        [ValidateScript({ Test-Path $_ -PathType Leaf })]
+        [Alias('d')]        
+        [String] $ConfigFile=$env:todotxt_cfg_file,
+        
+        [Switch] $Force,
+        
+        [Alias('p')]
+        [Switch] $Plain,
+        
+        [Switch] $HidePriorityLabels,
+                
+        [Alias('a')]
+        [Switch] $AutoArchiveOff,
+        
+        [Alias('n')]
+        [Switch] $PreserveLineNumbersOff,
+        
+        [Alias('t')]
+        [Switch] $DateOnAdd,
+        
+        [Alias('vo')]
+        [Switch] $VerboseOff,
+        
+#       [Switch] $ExtraVerbose, 
+        # -> Write-Verbose and -Verbose instead
+
+        [Switch] $Version,
+        
+        [Alias('x')]
+        [Switch] $DisableFilter
+    )# __param
+
+    begin {
+        # --- Process Options
+        $todoOptions = @{ 
+            OVR_TODOTXT_AUTO_ARCHIVE = $Null
+            OVR_TODOTXT_PLAIN = $Plain
+            OVR_TODOTXT_FORCE = $Force
+            OVR_TODOTXT_PRESERVE_LINE_NUMBERS = $Null
+            OVR_TODOTXT_DATE_ON_ADD = $DateOnAdd
+            OVR_TODOTXT_VERBOSE = $Null
+            OVR_TODOTXT_DISABLE_FILTER = $DisableFilter            
+        }
+        $env:HIDE_CONTEXTS_SUBSTITUTION = ('\s@[\P{Z}\P{C}]+',$Null)[!$HideContextNames]
+        $env:HIDE_PROJECTS_SUBSTITUTION = ('\s[+][\P{Z}\P{C}]+',$Null)[!$HideProjectNames]
+        $env:HIDE_PRIORITY_SUBSTITUTION = ('([A-Z])\s',$Null)[!$HidePriorityLables]
+        $env:TODOTXT_CFG_FILE = $ConfigFile
+        if ($AutoArchiveOff) { $todoOption.OVR_TODOTXT_AUTO_ARCHIVE = $False } 
+        if ($PreserveLineNumberOff) { $todoOption.OVR_TODOTXT_PRESERVE_LINE_NUMBERS = $False } 
+        if ($VerboseOff) { $todoOption.OVR_TODOTXT_VERBOSE = $False } 
+      
+        # --- Apply Overrides
+        $todoOptions | 
+            Where-Object { $_ } |  
+            ForEach-Object { 
+                Set-Item -Path Env:/* -Include $_.Replace('OVR_','') -Value $_.Value
+            }
+      
+        if ($env:todotxt_plain) { 
+            Get-Item Env:PRI_* | Set-Item $Null
+        }
+        
+        # --- Helper Functions and Filters
+        filter FormatInput {
+            # cleaninput()
+            # Inputs:  input contains text to be cleaned
+            # Outputs: modified input
+            
+            # Replace CR and LF; tasks always comprise a single line
+            $_ -replace "$cr|$lf"
+            
+            #- for sed*
+        }   
+        
+        function Get-Todo ($todoItem=$Item) {
+            # getTodo()
+            # getNewTodo()
+           
+            $todoFile = Get-Content $Path 
+                            
+            $todo = $todoFile[$todoItem]
+            if (-not $todo) { 
+                die "$(Get-TodoPrefix): No task $todoItem" 
+            }
+            else {
+                return $todo
+            }
+        }
+               
+        function Add-Todo ($File) {
+            # _add()
+            
+            if ($Project) { $Text += " +$Project" }           # append project
+            if ($Context) { $Text += " @$Context" }           # append context
+            
+            if ($env:todotxt_date_on_add) { 
+                $Text = (Get-Date -Format yyyy-M-d) + $Text   # prepend the date
+            }
+            $todoToAdd = $Text | FormatInput                  # cleaninput()
+            
+            Add-Content -Path $File -Value $todoToAdd
+            
+            if ($env:todotxt_verbose) {
+                $taskNumber = Get-TaskNumber $File
+                verbose "$taskNumber $Text"
+                success "$(Get-TodoPrefix $File): $taskNumber added."
+            }
+        }
+        
+        function Archive { 
+            # Fetch not blank lines
+            $todo = Get-Content $Path | 
+                where { $_ } 
+                
+            # Fetch Done and Not Done lines
+            $done = $todo -match '^x '
+            $notDone = $todo -notmatch '^x '
+            
+            Write-Verbose $done   
+            # I want this to be 'extra' verbose, not 'normal' verbosity
+            
+            # Move Done lines (Add)
+            Add-Content -Path $Env:done_file -Value $Done
+            
+            # Remove Done lines (Set)
+            #  The original action simply deleted the lines and preserved line numbers
+            #  I disagree (an archive action should reformat the file), but we'll comply
+            Get-Content $Path | 
+                ForEach-Object { 
+                    if ($done -contains $_) { '' } else { $_ } 
+                } | 
+                Set-Content $Path
+                
+            # Report
+            if ($env:todotxt_verbose) { 
+                success "TODO: $Path archived"
+            }
+        }   
+
+        function Reset-Todo {
+            # replaceOrPrepend() 
+            
+            # TODO: poshify this
+            
+            $action, $item, $rest = $args   # shift 
+            
+            switch ($action) { 
+            
+                'replace' { 
+                    $backref = $Null
+                    $querytext = 'Replacement'
+                }
+                
+                'prepend' {
+                    $backref = '$&'
+                    $querytext = 'Prepend'
+                }
+            }
+            
+        #   shift 
+            
+            $todo = Get-Todo $item
+              
+            if ($rest.Length -eq 0 -and -not $env:todotxt_force) {
+                $input = prompt $queryText   # no default value
+            }
+            else {
+                $input = $rest
+            }
+            
+            $input = $input | FormatInput
+                
+            # Retrieve existing priority and prepended date
+            $priAndDateExpr = '^\((.) \)\{0,1\}\([0-9]\{2,4\}-[0-9]\{2\}-[0-9]\{2\} \)\{0,1\}'
+            
+            [Void] Get-Content $Path | Select-Object -Index $item | 
+                Where-Object { $_ -match $priAndDateExpr }
+                
+            $priority = $Matches[1]
+            $prepdate = $Matches[2]
+                
+            if (($prepdate -and ($action -eq 'replace')) -and ($input -replace "($priAndDateExpr).*",'$1$2')) {
+                # If the replaced text starts with a [priority +] date, it will replace
+                # the existing date, too.
+                $prepdate = $Null
+            }
+            
+            # Temporarily remove any existing priority and prepended date, perform the
+            # change (replace/prepend) and re-insert the existing priority and prepended
+            # date again.
+            
+            Get-Content $Path | 
+                ForEach-Object { 
+                    if ($_.ReadCount -eq $item) {
+                        $_ -replace "^$priority $prepdate" 
+                        $_ -replace '^.*',"$priority $predate $input $backref"
+                    } 
+                    else { 
+                        $_
+                    }
+                } | 
+                Set-Content $Path
+                
+            if ($env:todotxt_verbose) {
+                $newTodo = Get-Todo $item
+                
+                switch ($action) {
+                
+                    'replace' {
+                        verbose "$Item $todo"
+                        success "TODO: Replaced task with: $Item $newTodo" 
+                    } 
+                    
+                    'prepend' { 
+                        success "$Item $newTodo"
+                    }
+                }
+            }
+        }# __func
+    }# __begin
+
+    process {
+        switch ($PSCmdlet.ParameterSetName) {
+            'Add' { 
+                Add-Todo $Path
+             }
+             
+            'AddTo' {
+                Add-Todo $Destination
+             }
+            'Append' {    
+                [Void] Get-Todo $Item   # check if todo exists
+                
+                if ($Text -match "^[$env:sentence_delimters]*") { 
+                    $appendSpace = $Null
+                } 
+                else { 
+                    $appendSpace = ' ' 
+                }
+                                               
+                try { 
+                    $todoFile = Get-Content $Path 
+                                                
+                    $todoFile[$Item] += $appendSpace + $Text                    
+                    
+                    Set-Content -Path $Path -Value $todoFile
+                    
+                    if ($env:todotxt_verbose) { verbose "$Item $(Get-Todo $Item)" }
+                }
+                catch {
+                    die "TODO: Error appending task $Item"
+                }                
+            }
+            'Delete' {
+                # replace deleted line with a blank line when TODOTXT_PRESERVE_LINE_NUMBERS is 1
+                $todo = Get-Todo
+
+                    if (-not $Term) {
+                        
+                        if (-not $env:todotxt_force) {
+                            $answer = prompt "Delete $todo?",'y'   # No check
+                        }
+                        else {
+                            $answer = 'y'
+                        }                            
+                        
+                        if ($answer -eq 'y') {
+                        
+                            if (-not $env:todotxt_preserve_line_numbers) {
+                            
+                                # Delete line (changes line numbers)
+                                Get-Content $Path | 
+                                    Where-Object { $_.ReadCount -ne $Item } | 
+                                    Set-Content $Path 
+                            }
+                            else { 
+                                # Leave blank line behind (preserves line numbers)
+                                Get-Content $Path | 
+                                    ForEach-Object { 
+                                        if ($_.ReadCount -eq $Item) { '' } else { $_ }
+                                    } |
+                                    Set-Content $Path
+                            }
+                            
+                            if ($env:todotxt_verbose) {
+                                verbose "$Item $todo"
+                                success "TODO: $Item deleted."
+                            }
+                        else {
+                            failure "TODO: No tasks were deleted."
+                        }
+                    }# _if
+                    else {
+                        Get-Content $Path | 
+                            ForEach-Object { 
+                                if ($_.ReadCount -eq $Item) {
+                                    $_ -replace $Term
+                                } 
+                                else {
+                                    $_
+                                }
+                            } | 
+                            Set-Content $Path
+                        
+                        $newTodo = Get-Todo
+                        
+                        if ($todo -eq $newTodo) {
+                            if ($env:todotxt_verbose) { verbose "$Item $todo" }
+                            die "TODO: $Term not found; no removal done"
+                        }
+                        
+                        if ($env:todotxt_verbose) {
+                            verbose "$Item $todo"
+                            success "TODO: Removed $Term from task."
+                            verbose "$Item $newTodo"
+                        }
+                    }# _else
+            }# _delete
+            'Deprioritize' {
+                $todo = Get-Todo
+                        
+                if ($todo -match '\(?\)*') {
+                    Get-Content $Path | 
+                        ForEach-Object { 
+                            if ($_.ReadCount -eq $Item) {
+                                $_ -replace '^(.) '
+                            }
+                            else { 
+                                $_
+                            }
+                        } | 
+                        Set-Content $Path
+                    
+                    if ($env:todotxt_verbose) {
+                        verbose "$Item $todo"
+                        success "TODO: $Item deprioritized."
+                    }
+                }
+        	    else {
+                    failure "TODO: $Item is not prioritized."
+        	    } 
+            }
+            'Do' { 
+                $todo = Get-Todo
+                    
+                if ($todo -notmatch '^x') {
+                    $now = Get-Date -UFormat '+%Y-%m-%d'
+                    Get-Content $Path | 
+                        ForEach-Object {
+                            if ($_.ReadCount -eq $Item) {
+                                $_ -replace '^(.)','^x $now '
+                            }
+                            else {
+                                $_
+                            }
+                        } |
+                        Set-Content $Path
+                        
+                    if ($env:todotxt_verbose) {
+                        verbose "$Item $todo"
+                        success "TODO: $Item marked as done"
+                    }
+                }
+                else { 
+                    failure "TODO: $Item is already marked done"        
+                }            
+            
+                if ($env:todotxt_auto_archive) {
+                    #  Recursively invoke the function to allow overriding of the archive
+                    #  action
+                    Invoke-Todo -Archive
+                }
+            }
+            'List' { 
+                Show-Todo $Path
+            }
+            'ListAll' {
+                # Fetch files
+                $todoFile = Get-Content $env:todo_file |
+                    where { $_ }
+                    
+                $doneFile = Get-Content $env:done_file |
+                    where { $_ }
+                
+                # Display contents
+                ($todoFile + $doneFile) |                    
+                    Write-Output  |
+                    Out-Host -Paging
+                
+                # Display stats
+                if ($env:todotxt_verbose) {
+                    echo '---'
+                    verbose "$($todoFile.Count + $doneFile.Count) tasks shown"
+                }
+            }
+            'ListContext' {
+                listWordsWithSigil '@'
+            }
+            
+            ## I don't see a purpose for ListFile, so it hasn't been included
+            
+#           'ListFile' {
+              
+#               shift  ## Was listfile, next $1 is file name
+#               if [ $# -eq 0 ]; then
+#                   [ $TODOTXT_VERBOSE -gt 0 ] && echo "Files in the todo.txt directory:"
+#                   cd "$TODO_DIR" && ls -1 *.txt
+#               else
+#                   FILE="$1"
+#                   shift  ## Was filename; next $1 is first search term
+
+#                   _list "$FILE" "$@"
+#               fi
+#           }
+            'ListPriorities' {
+#               shift ## was "listpri", new $1 is priority to list or first TERM
+
+#               pri=$(printf "%s\n" "$1" | tr 'a-z' 'A-Z' | grep -e '^[A-Z]$' -e '^[A-Z]-[A-Z]$') && shift || pri="A-Z"
+#               post_filter_command="${post_filter_command:-}${post_filter_command:+ | }grep '^ *[0-9]\+ ([${pri}]) '"
+                
+                Select-String -Path $Path -Pattern '^ *[0-9]+ \([A-Z]\)' | Sort-Object   # ???
+            }
+            'ListProject' {
+                listWordsWithSigil '+'
+            }
+            'Move' {
+                $todo = Get-Todo $Item
+                if (-not $env:todotxt_force) {
+                    $answer = prompt "Move $todo from $Path to $Destination?" 'y'
+                }
+                else {
+                    $answer = 'y'
+                }
+                
+                if ($answer -eq 'y') {
+                    if (-not $env:todotxt_preserve_line_numbers) {
+                        # Delete line (changes line numbers)
+                        Add-Content -Path $Destination -Value $todo
+                        Get-Content $Path | 
+                            Where-Object { $_.ReadCount -ne $Item } |
+                            Set-Content $Path
+                    } 
+                    else {
+                        # Leave blank lines
+                        Get-Content $Path | 
+                            ForEach-Object { 
+                                if ($_.ReadCount -eq $Item) { '' } else { $_ }
+                            } |
+                            Set-Content $Path
+                    }
+                                        
+                    if ($env:todotxt_verbose) {
+                        verbose "$Item $todo"
+                        success "TODO: $Item moved from $Path to $Destination"
+                    }
+                }
+                else {
+                    failure "TODO: No tasks moved"
+                }
+            }
+            'Prepend' {
+                replaceOrPrepend 'prepend' $Item $Text
+            }
+            'Prioritize' {
+#               item=$2
+#               newpri=$( printf "%s\n" "$3" | tr 'a-z' 'A-Z' )
+                $todo = Get-Todo
+                if ($todo -match '\(?\) *') {
+                    $oldPri = $todo[1]   # grab the letter
+                }
+                
+                if ($oldPri -ne $Priority) { 
+                    Get-Content $Path | 
+                        ForEach-Object { 
+                            if ($_.ReadCount -eq $Item) {
+                                $_ -replace '^(.) ',"($Priority)"
+                            } 
+                            else { 
+                                $_
+                            }
+                        } | 
+                        Set-Content $Path
+                        
+                    if ($env:todotxt_verbose) {
+                        verbose "$Item $(Get-Todo)"
+                        if (-not $oldPri) {
+                            success "TODO: $Item prioritized ($Priority)"
+                        }
+                        else {
+                            success "TODO: $Item prioritized from ($oldPri) to ($Priority)"
+                        }
+                }
+                else {
+                    failure "TODO: $Item already prioritized ($Priority)"
+                }
+            }
+            'Replace' {
+                replaceOrPrepend 'replace' $Item $Text
+            }
+            default { Write-TodoUsage }
+        }
+        
+        if ($Archive) { Archive }
+
+        if ($RemoveDuplicates) {
+            $todoFile = Get-Content $Path | 
+                Where-Object { $_ }
+                
+            $originalTaskNum = $todoFile.Count
+                
+            if (-not $env:todotxt_preserve_line_numbers) {
+                $newTaskNum = $todoFile | 
+                    Sort-Object -Unique |
+                    Set-Content $Path |
+                    Measure-Object -Line | 
+                    Select-Object Lines -ExpandProperty
+            }
+            else {
+                $dupes = Get-Content $Path |
+                    Group-Object |
+                    Where-Object { -not ($_.Name -and $_.Count -gt 1) } | 
+                    Select-Object Name 
+                
+                $newTaskNum = Get-Content $Path | 
+                    ForEach-Object { 
+                        if ($dupes -contains $_) { '' } else { $_ }
+                    } | 
+                    Set-Content $Path |
+                    Measure-Object -Line | 
+                    Select-Object Lines -ExpandProperty
+            }
+            
+            $duplicateNum = $originalTaskNum - $newTaskNum
+            $s = ('','s')[$duplicateNum -gt 1]
+            
+            if ($duplicateTaskNum) {
+                success "TODO: $duplicateNum duplicate task$s removed"
+            }
+            else {
+                failure "TODO: No duplicate tasks found"
+            }
+        }# _if removeduplicates
+
+        if ($Report) {
+            # Archive first
+            Invoke-Todo -Archive
+
+            $total = Get-TaskNumber $Path
+            $done = Get-TaskNumber $env:done_file
+            $newData = "$total $done"
+            $lastReport = Get-Content $env:report_file | Select-Object -Last 1
+            $lastData = $lastReport -replace '^[^ ]* ' 
+#                                             ^^^^^^^ -> LASTDATA=${LASTREPORT#* }
+
+            if ($lastData -eq $newData) {
+                echo $lastReport
+                
+                if ($env:todotxt_verbose) {
+                    verbose "TODO: Report file is up-to-date"
+                }
+            else {
+                $newReport = "$(Get-Date -UFormat +%Y-%m-%dT%T) $newData"
+                
+                Add-Content -Path $env:report_file -Value $newReport > $Null
+                
+                echo $newReport
+                
+                if ($env:todotxt_verbose) { 
+                    success "TODO: Report file updated"
+                }
+            }
+        }
+        
+        if ($ListAddOns) { 
+            echo 'big mystery'
+#           if [ -d "$TODO_ACTIONS_DIR" ]; then
+#           cd "$TODO_ACTIONS_DIR" || exit $?
+#           for action in *
+#           do
+#               if [ -f "$action" -a -x "$action" ]; then
+#                   echo "$action"
+#               elif [ -d "$action" -a -x "$action/$action" ]; then
+#                   echo "$action"
+#               fi
+#           done
+#       fi
+        }
+
+    }#__ proc
+}# __func 
+
+# __END__

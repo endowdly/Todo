@@ -1,0 +1,33 @@
+PSTOPIC
+    about_todo
+
+SHORT DESCRIPTION
+    Invoke-Todo is a port of the Bash Script 'todo.sh' by Gina T. It allows you to work with SSH or a cloud based todo file between Unix/Windows platforms seemlessly.
+
+LONG DESCRIPTION
+    See Short Description. More information here: 
+
+    First release: 5/11/2006
+    Original conception by: Gina Trapani (http://ginatrapani.org)
+    Contributors: http://github.com/ginatrapani/todo.txt-cli/network
+    License: GPL, http://www.gnu.org/copyleft/gpl.html
+
+    More information and mailing list at http://todotxt.com
+    Code repository: http://github.com/ginatrapani/todo.txt-cli/tree/master
+    PowerShell port by endowdly
+    Port repository: 
+
+    Notes: 
+
+	Comment Annotations
+	---
+	# ? 
+	# !
+ 	# bash -> posh
+
+    Changes:
+
+	
+
+DETAILED DESCRIPTION
+    See 'Invoke-Todo -?' or 'Get-Help Invoke-Todo -Full' for help.
