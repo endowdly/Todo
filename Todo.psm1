@@ -40,6 +40,7 @@ $TempConfig = Join-Path $PSScriptRoot -Resolve CONFIG*
 
 # -> env
 $defaults = @{
+    HOME = $USERPROFILE
     TODOTXT_VERBOSE = $true
     TODOTXT_PLAIN = $false
     TODOTXT_CFG_FILE = "$HOME/.todo/config"
@@ -60,11 +61,6 @@ $defaults = @{
     COLOR_DONE = 'Gray'
 }
 
-# Mod names
-# HACK: This may need to be optimized (removed) because it isn't used much
-$TOOD_FULL_SH = Join-Path $PSScriptRoot/Public -Resolve Invoke-Todo*
-$TODO_SH = Get-FileBaseName $TODO_FULL_SH
-
 # Default base color
 $DefaultColor = $Host.UI.RawUI.ForegroundColor 2> $null
 $DefaultColor = ($DefaultColor, 'Gray' -ne -1)[0]
@@ -72,7 +68,12 @@ $DefaultColor = ($DefaultColor, 'Gray' -ne -1)[0]
 # apply env => 
 $defaults.GetEnumerator() |
     ? { $_.Value -ne $null } |
-    % { Set-Variable $_.Key $_.Value }
+    % { 
+        $k = $_.Key
+        $ev = get-item -path env:$k -ErrorAction SilentlyContinue
+        if ($ev -eq $null) { Set-Variable $_.Key $_.Value }
+        else { Set-Variable $_.Key $ev.Value } 
+    }
 
 # -> Aliases
 Set-Alias replaceOrPrepend Reset-Todo
